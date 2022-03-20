@@ -10,7 +10,7 @@ file_botset=$root/config/botset.json
 file_diybotset=$root/config/diybotset.json
 
 branch="main"
-url="https://github.com/chiupam/JD_Diy.git"
+url="https://tuisong.321082081.workers.dev/https://github.com/chiupam/JD_Diy.git"
 
 main() {
   echo -e "\n$1\n"
