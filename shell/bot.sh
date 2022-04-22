@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-if [ -d "/jd" ]; then root=/jd; else root=/ql; else root=/ql/data; fi
+if [ -d "/jd" ]; then root=/jd; else root=/ql; fi
 
 dir_jbot=$root/jbot
 dir_diybot=$root/repo/diybot
