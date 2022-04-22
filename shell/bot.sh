@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
-if [ -d "/jd" ]; then root=/jd; else root=/ql; fi
+if [ -d /ql/data/config ];then
+    root='/ql/data'
+else
+    root='/ql'
+fi
+echo -e "\n\t\t\t你的青龙版本为:${QL_BRANCH}\n"
 
 dir_jbot=$root/jbot
 dir_diybot=$root/repo/diybot
