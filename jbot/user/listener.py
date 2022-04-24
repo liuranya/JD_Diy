@@ -22,8 +22,14 @@ async def listener(event):
         user_id = event.sender_id
         group = event.chat.title
         username = str(event.sender.username if event.sender.username else "未设置")
-        first_name = str(event.sender.first_name if event.sender.first_name else "")
-        last_name = str(event.sender.last_name if event.sender.last_name else "")
+        try:
+            first_name = str(event.sender.first_name if event.sender.first_name else "")
+        except Exception as e:
+            first_name = ""
+        try:
+            last_name = str(event.sender.last_name if event.sender.last_name else "")
+        except Exception as e:
+            last_name = ""
         name = first_name + last_name
         message = "; ".join(event.message.text.split("\n"))
         now = time.strftime("%H:%M:%S", time.localtime())

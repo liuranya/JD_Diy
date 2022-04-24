@@ -14,6 +14,8 @@ async def bot_help(event):
     if V4:
         mhelp = '''
 a-自定义快捷按钮
+addcron-增加定时
+addenv-青龙新增环境变量
 bean-获取收支
 blockcookie-屏蔽账号
 chart-统计收支变化
@@ -21,12 +23,14 @@ check-测试user连接
 checkcookie-检测过期
 clearboard-删除快捷输入按钮
 cmd-执行cmd命令
+cron-管理定时设定
+cx-任务管理器
+dl-下载文件
 edit-编辑文件
-export-管理环境变量
+env-管理环境变量
 help-获取帮助
-getfile-获取jd目录下文件
+getfile-获取目录下文件
 log-选择日志
-list-列出已拓展功能
 node-执行js脚本文件，绝对路径
 restart-重启本程序
 repo-仓库管理
@@ -46,6 +50,7 @@ ver-版本'''
     else:
         mhelp = '''
 a-自定义快捷按钮
+addcron-增加定时
 addenv-青龙新增环境变量
 bean-获取收支
 blockcookie-屏蔽账号
@@ -53,11 +58,14 @@ chart-统计收支变化
 check-测试user连接
 checkcookie-检测过期
 clearboard-删除快捷输入按钮
-cmd-执行shell命令
+cmd-执行cmd命令
+cron-管理定时设定
+cx-任务管理器
+dl-下载文件
 edit-编辑文件
 env-管理环境变量
 help-获取帮助
-getfile-获取jd目录下文件
+getfile-获取目录下文件
 log-选择日志
 node-执行js脚本文件，绝对路径
 restart-重启本程序

@@ -11,7 +11,8 @@ async def bot_set_short(event):
         msg = await conv.send_message(info)
         shortcut = await conv.get_response()
         if shortcut.raw_text == 'cancel' or shortcut.raw_text == '取消':
-            await jdbot.edit_message(msg, '对话已取消')
+            await jdbot.delete_messages(chat_id,msg)
+            await jdbot.send_message(chat_id, '对话已取消')
             conv.cancel()
             return
         with open(SHORTCUT_FILE, 'w+', encoding='utf-8') as f:
@@ -20,4 +21,5 @@ async def bot_set_short(event):
         conv.cancel()
 
 if ch_name:
-    jdbot.add_event_handler(bot_set_short, events.NewMessage(from_users=chat_id, pattern=BOT_SET['命令别名']['setshort']))
+    jdbot.add_event_handler(bot_set_short, events.NewMessage(
+        from_users=chat_id, pattern=BOT_SET['命令别名']['setshort']))

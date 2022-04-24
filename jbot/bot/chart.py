@@ -1,7 +1,8 @@
-from telethon import events
+from telethon import events, Button
 from .. import jdbot, chat_id, LOG_DIR, logger, BOT_SET, ch_name
 from ..bot.quickchart import QuickChart
 from .beandata import get_bean_data
+from .utils import V4,split_list, press_event
 BEAN_IMG = f'{LOG_DIR}/bot/bean.jpeg'
 
 
@@ -14,18 +15,47 @@ async def my_chart(event):
             text = msg_text[-1]
         else:
             text = None
-        if text:
+            
+        if text==None:
+            SENDER = event.sender_id
+            btn = []
+            for i in range(11):
+                btn.append(Button.inline(str(i+1), data=str(i+1)))
+            btn.append(Button.inline('取消', data='cancel'))
+            btn = split_list(btn, 3)            
+            async with jdbot.conversation(SENDER, timeout=90) as conv:
+                info='请选择要查询的账号:'
+                msg = await jdbot.edit_message(msg, info, buttons=btn, link_preview=False)
+                convdata = await conv.wait_event(press_event(SENDER))
+                res = bytes.decode(convdata.data)
+                if res == 'cancel':
+                    msg = await jdbot.edit_message(msg, '对话已取消')
+                    conv.cancel()
+                else:
+                    text = res
+                    msg = await jdbot.edit_message(msg, '开始查询账号'+text+'的资产，请稍后...')
+        if text==None:
+            await jdbot.delete_messages(chat_id, msg)
+            return
+            
+        if text and int(text):
             res = get_bean_data(int(text))
             if res['code'] != 200:
                 msg = await jdbot.edit_message(msg, f'something wrong,I\'m sorry\n{str(res["data"])}')
             else:
-                creat_chart(res['data'][3], f'账号{str(text)}', res['data'][0], res['data'][1], res['data'][2][1:])
-                msg = await jdbot.edit_message(msg, f'您的账号{text}收支情况', file=BEAN_IMG)
+                creat_chart(res['data'][3], f'账号{str(text)}',
+                            res['data'][0], res['data'][1], res['data'][2][1:])
+                await jdbot.delete_messages(chat_id, msg)
+                msg = await jdbot.send_message(chat_id, f'您的账号{text}收支情况', file=BEAN_IMG)
         else:
             msg = await jdbot.edit_message(msg, '请正确使用命令\n/chart n n为第n个账号')
     except Exception as e:
         await jdbot.edit_message(msg, f'something wrong,I\'m sorry\n{str(e)}')
         logger.error(f'something wrong,I\'m sorry\n{str(e)}')
+
+if ch_name:
+    jdbot.add_event_handler(my_chart, events.NewMessage(
+        chats=chat_id, pattern=BOT_SET['命令别名']['chart']))
 
 
 def creat_chart(xdata, title, bardata, bardata2, linedate):
@@ -133,7 +163,3 @@ def creat_chart(xdata, title, bardata, bardata2, linedate):
         }
     }
     qc.to_file(BEAN_IMG)
-
-
-if ch_name:
-    jdbot.add_event_handler(my_chart, events.NewMessage(chats=chat_id, pattern=BOT_SET['命令别名']['chart']))

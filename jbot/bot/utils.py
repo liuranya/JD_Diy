@@ -9,7 +9,7 @@ from functools import wraps
 import requests
 from telethon import events, Button
 
-from .. import jdbot, chat_id, LOG_DIR, logger, JD_DIR, DB_DIR, CONFIG_DIR, BOT_SET
+from .. import jdbot, chat_id, LOG_DIR, logger, JD_DIR, DIY_DIR, DB_DIR, CONFIG_DIR, BOT_SET
 
 row = int(BOT_SET["每页列数"])
 CRON_FILE = f"{CONFIG_DIR}/crontab.list"

@@ -27,8 +27,10 @@ async def activity(event):
         msg = await jdbot.send_message(chat_id, '监控到活动变量')
         group = f'[{event.chat.title}](https://t.me/c/{event.chat.id}/{event.message.id})'
         if "jd_zdjr_activity" in event.message.text:
-            name = '组队瓜分京豆'
-            cmd = f'{TASK_CMD} {OWN_DIR}/smiek_jd_zdjr.js now'
+            RunCommound="smiek_jd_zdjr.js now"
+            msg = await jdbot.send_message(chat_id, r"开始执行组队分豆脚本，请稍候")
+            await cmd('{} {}'.format(TASK_CMD, RunCommound))
+            await jdbot.delete_messages(chat_id, msg)
         else:
             return
         messages = event.message.raw_text.split("\n")
@@ -53,6 +55,8 @@ async def activity(event):
         else:
             info = f"监控到 {group} 的 **{name}** 活动"
             await execute(msg, info, cmd)
+    except ImportError:
+        pass
     except Exception as e:
         title = "【💥错误💥】"
         name = "文件名：" + os.path.split(__file__)[-1].split(".")[0]
