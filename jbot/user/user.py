@@ -33,36 +33,33 @@ async def user(event):
         tip = '建议百度/谷歌进行查询'
         await jdbot.send_message(chat_id, f"{title}\n\n{name}\n{function}\n错误原因：{str(e)}\n\n{tip}")
         logger.error(f"错误--->{str(e)}")
-@client.on(events.NewMessage(chats=myzdjr_chatIds, pattern=r'([\s\S]*)export\s(jd_task_lottery_custom|jd_task_wuxian_custom|M_WX_LUCK_DRAW_URL|jd_zdjr_activity|DAPAINEW|ACTIVITY_|jd_cjhy_activityId|jd_cjhy_activityId60).*=(".*"|\'.*\')'))
+@client.on(events.NewMessage(chats=myzdjr_chatIds, pattern=r'([\s\S]*)export\s(jd_wdz_activityId|VENDER_ID|jd_zdjr_activityId|jd_cjhy_activityId|M_WX_ADD_CART_|DAPAINEW|computer_activityIdList).*=(".*"|\'.*\')'))
 async def activityID(event):
-
+    
     def time_md():
         return time.strftime('%m%d', time.localtime(time.time()))
     try:
         text = event.message.text
-        if "jd_zdjr_activity" in text:
-            name = "组队分豆"
-        elif "M_WX_LUCK_DRAW_URL" in text:
-            name = "M转盘抽奖"
-        elif "M_WX_ADD_CART_URL" in text:
-            name = "M加购有礼"
-        elif "jd_cjhy_activityId60" in text:
+        if "jd_wdz_activityId" in text:
             name = "微定制"
+        elif "VENDER_ID" in text:
+            name = "入会捡漏"
+        elif "jd_zdjr_activityId" in text:
+            name = "组队分豆"
         elif "jd_cjhy_activityId" in text:
             name = "CJ组队"
-        elif "ACTIVITY_" in text:
-            name = "小埋加购抽奖"
-        elif "DAPAINEW" in text:
+        elif r"M_WX_ADD_CART_" in text:
+            name = "加购有礼"
+        elif r"DAPAINEW" in text:
             name = "大牌联合"
-        elif "jd_task_wuxian_" in text:
-            name = "可达鸭加购抽奖"
-        elif "jd_task_lottery_" in text:
-            name = "可达鸭抽奖机"
+        elif r"computer_activityIdList" in text:
+            name = "电脑配件"
         else:
             return
-        msg = await jdbot.send_message(chat_id, f'【监控】 监测到`{name}` 环境变量！')
+        group = f'[{event.chat.title}](https://t.me/c/{event.chat.id}/{event.message.id})'
+        msg = await jdbot.send_message(chat_id, f'【监控】{group} 发出的 `[{name}]` 环境变量！')
 
-
+        
         open_sqlite('/ql/jbot/user/user.db')
 
         sqlite_master=select_sqlite('sqlite_master')
@@ -70,15 +67,15 @@ async def activityID(event):
             table_name_list=[table[1] for table in sqlite_master]
         except:
             table_name_list=list()
-
+        
         # 初始化 time_md 表
         if 'time_md' not in table_name_list:
             create_table_sqlite("time_md", "md varchar(4)")
-
+            
         # 初始化 running_task 表
         if 'running_task' not in table_name_list:
             create_table_sqlite("running_task", "task_name varchar(20)")
-
+            
         # 初始化 all_task 表
         if 'all_task' not in table_name_list:
             create_table_sqlite("all_task", "task_data varchar(500)")
@@ -92,120 +89,110 @@ async def activityID(event):
             delete_sqlite("all_task")
             # 清理 running_task 表
             delete_sqlite("running_task")
-
-
+            
+        
         # 查询是否有正在运行的任务
         task_names=select_sqlite("running_task")
         if task_names:
             for task_name in task_names:
                 if task_name[0] == name:
                     await jdbot.send_message(chat_id, f'【监控】 正在运行的任务 {task_name[0]} ,此任务将进入排队')
-
-
-        waiting_number = 0
+        
+        
+        waiting_number = 0       
         # 等待其他任务完成
         while select_sqlite("running_task"):
             close_sqlite()
             await asyncio.sleep(10)
             open_sqlite('/ql/jbot/user/user.db')
-
+            
             waiting_number += 1
             if waiting_number > 150 :
                 delete_sqlite("running_task")
-
-
+                
+                
         # 开始任务,更新 running_task 表
         insert_into_sqlite("running_task","task_name",(name,))
-
+        
         messages = event.message.text.split("\n")
-
+              
         change = ""
         for message in messages:
             if "export " not in message:
                 continue
-            kv = message.replace("export ", "")
-
+            kvs = re.sub(r'.*export ', 'export ', message)
+            kv = kvs.replace("export ", "")
+            key = kv.split("=")[0]
+            value = re.findall(r'[\'|"]([^"]*)[\'|"]', kv)[0]
+            configs = rwcon("str")
+            # 去掉一些奇怪的符号。
+            kv = kv.replace('`', '').replace('*', '')
+            key = key.replace('`', '').replace('*', '')
+            value = value.replace('`', '').replace('*', '')
+            
             # 查询该环境变量是否存在于 all_task 表中
             if select_where_sqlite("all_task","task_data",kv):
                 await jdbot.send_message(chat_id, f'【监控】 查询到今日已使用过 {kv} ,忽略')
                 continue
-
+            
             # 此任务写入 all_task
             insert_into_sqlite("all_task","task_data",(kv,))
-
-            key = kv.split("=")[0]
-            value = re.findall(r'"([^"]*)"', kv)[0]
-            configs = rwcon("str")
-
+            
             if kv in configs:
                 continue
             if key in configs:
-                configs = re.sub(f'{key}=("|\').*("|\')', kv, configs)
-                change += f"【替换】 `{name}` 环境变量成功\n`{kv}`\n\n"
-                await asyncio.sleep(1)
+                configs = re.sub(f'{key}=("|\').*("|\').*', kv, configs)
+                change += f"【替换】{group} 发出的 `[{name}]` 环境变量成功\n`{kv}`\n\n"
+                await asyncio.sleep(1) 
                 msg = await jdbot.edit_message(msg, change)
             else:
                 configs = rwcon("str")
                 configs += f'export {key}="{value}"\n'
-                change += f"【新增】 `{name}` 环境变量成功\n`{kv}`\n\n"
+                change += f"【新增】{group} 发出的 `[{name}]` 环境变量成功\n`{kv}`\n\n"
                 msg = await jdbot.edit_message(msg, change)
                 await asyncio.sleep(0.5)
             rwcon(configs)
-
-        close_sqlite()
-
+        
+        close_sqlite()     
+        
         if len(change) == 0:
-            await jdbot.send_message(chat_id, f"【取消】 `{name}` 环境变量无需改动！")
+            await jdbot.send_message(chat_id,f"【取消】{group} 发出的 `{name}` 环境变量无需改动！")
             return
-        await asyncio.sleep(2)
+        await asyncio.sleep(1.5)     
         try:
-            #if "M_WX_LUCK_DRAW_URL" in event.message.text:
-            #    RunCommound="ql/m_jd_wx_luckDraw.js"
-            #    msg = await jdbot.send_message(chat_id, r"开始执行转盘抽奖脚本，请稍候")
-            #    await cmd('{} {}'.format(TASK_CMD, RunCommound))
-            #    await jdbot.delete_messages(chat_id, msg)
-            elif "M_WX_ADD_CART_URL" in event.message.text:
-                RunCommound="ql/m_jd_wx_addCart.js"
-                msg = await jdbot.send_message(chat_id, r"开始执行加购有礼脚本，请稍候")
-                await cmd('{} {}'.format(TASK_CMD, RunCommound))
-                await jdbot.delete_messages(chat_id, msg)
-            elif "M_WX_COLLECT_CARD_URL" in event.message.text:
-                RunCommound="ql/m_jd_wx_collectCard.js"
-                msg = await jdbot.send_message(chat_id, r"开始执行集卡赢京豆脚本，请稍候")
-                await cmd('{} {}'.format(TASK_CMD, RunCommound))
+            if "jd_wdz_activityId" in event.message.text:
+                RunCommound="jd_task_comment.js"
+                msg = await jdbot.send_message(chat_id, r"开始执行微定制脚本，请稍候")
+                await cmd('{} {}'.format(TASK_CMD, RunCommound))    
+                await jdbot.delete_messages(chat_id, msg)    
+            elif "VENDER_ID" in event.message.text:
+                RunCommound="KingRan_KR/jd_OpenCard_Force.js"
+                msg = await jdbot.send_message(chat_id, r"开始执行入会捡漏脚本，请稍候")
+                await cmd('{} {}'.format(TASK_CMD, RunCommound))    
                 await jdbot.delete_messages(chat_id, msg)
             elif "jd_zdjr_activityId" in event.message.text:
-                RunCommound="ql/jd_zdjr.js"
+                RunCommound="jd_zdjr.js"
                 msg = await jdbot.send_message(chat_id, r"开始执行组队分豆脚本，请稍候")
                 await cmd('{} {}'.format(TASK_CMD, RunCommound))
                 await jdbot.delete_messages(chat_id, msg)
-            elif "jd_cjhy_activityId60" in event.message.text:
-                RunCommound="/ql/scripts/jd_team60_xiugai.js"
-                msg = await jdbot.send_message(chat_id, r"开始执行微定制脚本，请稍候")
-                await cmd('{} {}'.format(TASK_CMD, RunCommound))
-                await jdbot.delete_messages(chat_id, msg)
             elif "jd_cjhy_activityId" in event.message.text:
-                RunCommound="ql/jd_cjzdgf.js"
+                RunCommound="jd_cjzdgf.js"
                 msg = await jdbot.send_message(chat_id, r"开始执行CJ组队脚本，请稍候")
                 await cmd('{} {}'.format(TASK_CMD, RunCommound))
-            #elif "DAPAINEW" in event.message.text:
-            #    RunCommound="/ql/scripts/jd_jinggengjcq_dapainew_tool.js"
-            #    msg = await jdbot.send_message(chat_id, r"开始执行大牌联合脚本，请稍候")
-            #    await cmd('{} {}'.format(TASK_CMD, RunCommound))
-            #    await jdbot.delete_messages(chat_id, msg)
-            elif "ACTIVITY_" in event.message.text:
-                RunCommound="ql/rush_wxCollectionActivity.js"
-                msg = await jdbot.send_message(chat_id, r"开始执行加购脚本，请稍候")
+                await jdbot.delete_messages(chat_id, msg)
+            elif "M_WX_ADD_CART_" in event.message.text:
+                RunCommound="jd_addCart.js"
+                msg = await jdbot.send_message(chat_id, r"开始执行加购有礼脚本，请稍候")
                 await cmd('{} {}'.format(TASK_CMD, RunCommound))
                 await jdbot.delete_messages(chat_id, msg)
-            elif "jd_task_wuxian_" in event.message.text:
-                RunCommound="jd_task_wuxian.js"
-                msg = await jdbot.send_message(chat_id, r"开始执行可达鸭加购脚本，请稍候")
+            elif "DAPAINEW" in event.message.text:
+                RunCommound="jd_jinggengjcq_dapainew_tool.js"
+                msg = await jdbot.send_message(chat_id, r"开始执行大牌联合脚本，请稍候")
                 await cmd('{} {}'.format(TASK_CMD, RunCommound))
                 await jdbot.delete_messages(chat_id, msg)
-            elif "jd_task_lottery_" in event.message.text:
-                RunCommound="jd_task_lottery.js"
-                msg = await jdbot.send_message(chat_id, r"开始执行可达鸭抽奖机，请稍候")
+            elif "computer_activityIdList" in event.message.text:
+                RunCommound="jd_computer.js"
+                msg = await jdbot.send_message(chat_id, r"开始执行电脑配件脚本，请稍候")
                 await cmd('{} {}'.format(TASK_CMD, RunCommound))
                 await jdbot.delete_messages(chat_id, msg)
             else:
@@ -224,7 +211,7 @@ async def activityID(event):
         try:
             open_sqlite('/ql/jbot/user/user.db')
             delete_sqlite("running_task")
-            close_sqlite()
+            close_sqlite() 
             # user.close()
         except:
             pass

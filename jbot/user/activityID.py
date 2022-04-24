@@ -27,7 +27,7 @@ async def activity(event):
         msg = await jdbot.send_message(chat_id, '监控到活动变量')
         group = f'[{event.chat.title}](https://t.me/c/{event.chat.id}/{event.message.id})'
         if "jd_zdjr_activity" in event.message.text:
-            RunCommound="smiek_jd_zdjr.js now"
+            RunCommound="jd_zdjr.js now"
             msg = await jdbot.send_message(chat_id, r"开始执行组队分豆脚本，请稍候")
             await cmd('{} {}'.format(TASK_CMD, RunCommound))
             await jdbot.delete_messages(chat_id, msg)
