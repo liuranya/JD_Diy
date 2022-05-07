@@ -17,7 +17,7 @@ from .login import user
 from telethon import events, TelegramClient
 from .. import chat_id, jdbot, logger, API_ID, API_HASH, PROXY_START, proxy, CONFIG_DIR, JD_DIR, TOKEN, BOT_DIR
 from ..bot.utils import cmd, V4, QL, CONFIG_SH_FILE, get_cks,TASK_CMD
-from ..diy.utils import getbean, my_chat_id, myzdjr_chatIds,read,shoptokenIds,rwcon,read, write
+from ..diy.utils import getbean, my_chat_id, myzdjr_chatIds, listenerIds, read, rwcon, read, write
 
 client = user
 
@@ -33,7 +33,7 @@ async def user(event):
         tip = '建议百度/谷歌进行查询'
         await jdbot.send_message(chat_id, f"{title}\n\n{name}\n{function}\n错误原因：{str(e)}\n\n{tip}")
         logger.error(f"错误--->{str(e)}")
-@client.on(events.NewMessage(chats=myzdjr_chatIds, pattern=r'([\s\S]*)export\s(jd_wdz_activityId|VENDER_ID|jd_zdjr_activityId|jd_cjhy_activityId|M_WX_ADD_CART_|DAPAINEW|computer_activityIdList).*=(".*"|\'.*\')'))
+@client.on(events.NewMessage(chats=myzdjr_chatIds, pattern=r'([\s\S]*)export\s(jd_wdz_activityId|VENDER_ID|jd_zudui_|jd_addCart_|DPLHTY|computer_activityIdList|M_WX_CENTER_DRAW_URL|WXGAME_ACT_ID).*=(".*"|\'.*\')'))
 async def activityID(event):
     
     def time_md():
@@ -44,14 +44,16 @@ async def activityID(event):
             name = "微定制"
         elif "VENDER_ID" in text:
             name = "入会捡漏"
-        elif "jd_zdjr_activityId" in text:
+        elif "jd_zudui_" in text:
             name = "组队分豆"
-        elif "jd_cjhy_activityId" in text:
-            name = "CJ组队"
-        elif r"M_WX_ADD_CART_" in text:
+        elif r"jd_addCart_" in text:
             name = "加购有礼"
-        elif r"DAPAINEW" in text:
+        elif r"DPLHTY" in text:
             name = "大牌联合"
+        elif r"WXGAME_ACT_ID" in text:
+            name = "爆裂豆豆"
+        elif r"M_WX_CENTER_DRAW_URL" in text:
+            name = "老虎机"
         elif r"computer_activityIdList" in text:
             name = "电脑配件"
         else:
@@ -59,7 +61,6 @@ async def activityID(event):
         group = f'[{event.chat.title}](https://t.me/c/{event.chat.id}/{event.message.id})'
         msg = await jdbot.send_message(chat_id, f'【监控】{group} 发出的 `[{name}]` 环境变量！')
 
-        
         open_sqlite('/ql/jbot/user/user.db')
 
         sqlite_master=select_sqlite('sqlite_master')
@@ -143,7 +144,7 @@ async def activityID(event):
             if key in configs:
                 configs = re.sub(f'{key}=("|\').*("|\').*', kv, configs)
                 change += f"【替换】{group} 发出的 `[{name}]` 环境变量成功\n`{kv}`\n\n"
-                await asyncio.sleep(1) 
+                await asyncio.sleep(2) 
                 msg = await jdbot.edit_message(msg, change)
             else:
                 configs = rwcon("str")
@@ -161,7 +162,7 @@ async def activityID(event):
         await asyncio.sleep(1.5)     
         try:
             if "jd_wdz_activityId" in event.message.text:
-                RunCommound="jd_task_comment.js"
+                RunCommound="jd_wdz.js"
                 msg = await jdbot.send_message(chat_id, r"开始执行微定制脚本，请稍候")
                 await cmd('{} {}'.format(TASK_CMD, RunCommound))    
                 await jdbot.delete_messages(chat_id, msg)    
@@ -170,24 +171,29 @@ async def activityID(event):
                 msg = await jdbot.send_message(chat_id, r"开始执行入会捡漏脚本，请稍候")
                 await cmd('{} {}'.format(TASK_CMD, RunCommound))    
                 await jdbot.delete_messages(chat_id, msg)
-            elif "jd_zdjr_activityId" in event.message.text:
-                RunCommound="jd_zdjr.js"
+            elif "jd_zudui_" in event.message.text:
+                RunCommound="jd_zudui.js"
                 msg = await jdbot.send_message(chat_id, r"开始执行组队分豆脚本，请稍候")
                 await cmd('{} {}'.format(TASK_CMD, RunCommound))
                 await jdbot.delete_messages(chat_id, msg)
-            elif "jd_cjhy_activityId" in event.message.text:
-                RunCommound="jd_cjzdgf.js"
-                msg = await jdbot.send_message(chat_id, r"开始执行CJ组队脚本，请稍候")
-                await cmd('{} {}'.format(TASK_CMD, RunCommound))
-                await jdbot.delete_messages(chat_id, msg)
-            elif "M_WX_ADD_CART_" in event.message.text:
+            elif "jd_addCart_" in event.message.text:
                 RunCommound="jd_addCart.js"
                 msg = await jdbot.send_message(chat_id, r"开始执行加购有礼脚本，请稍候")
                 await cmd('{} {}'.format(TASK_CMD, RunCommound))
                 await jdbot.delete_messages(chat_id, msg)
-            elif "DAPAINEW" in event.message.text:
-                RunCommound="jd_jinggengjcq_dapainew_tool.js"
+            elif "WXGAME_ACT_ID" in event.message.text:
+                RunCommound="jd_opencardDPLHTY.js"
+                msg = await jdbot.send_message(chat_id, r"开始执行爆裂豆豆脚本，请稍候")
+                await cmd('{} {}'.format(TASK_CMD, RunCommound))
+                await jdbot.delete_messages(chat_id, msg)
+            elif "DPLHTY" in event.message.text:
+                RunCommound="jd_opencardDPLHTY.js"
                 msg = await jdbot.send_message(chat_id, r"开始执行大牌联合脚本，请稍候")
+                await cmd('{} {}'.format(TASK_CMD, RunCommound))
+                await jdbot.delete_messages(chat_id, msg)
+            elif "M_WX_CENTER_DRAW_URL" in event.message.text:
+                RunCommound="m_jd_wx_centerDraw.js"
+                msg = await jdbot.send_message(chat_id, r"开始执行老虎机脚本，请稍候")
                 await cmd('{} {}'.format(TASK_CMD, RunCommound))
                 await jdbot.delete_messages(chat_id, msg)
             elif "computer_activityIdList" in event.message.text:
