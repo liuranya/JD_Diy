@@ -1,388 +1,565 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import asyncio
-import requests
-import os
-import time
+import datetime
 import json
+import os
 import re
+import time
+from functools import wraps
 
-from .. import chat_id, jdbot, CONFIG_DIR
-from ..bot.utils import V4, QL, mycron, press_event, AUTH_FILE, cron_manage_QL, add_cron_V4, get_cks, CONFIG_SH_FILE
+import requests
+from telethon import events, Button
 
-with open(f"{CONFIG_DIR}/diybotset.json", 'r', encoding='utf-8') as f:
-    diybotset = json.load(f)
-my_chat_id = int(diybotset['my_chat_id'])
+from .. import jdbot, chat_id, LOG_DIR, logger, JD_DIR, DIY_DIR, DB_DIR, CONFIG_DIR, BOT_SET
 
+row = int(BOT_SET["每页列数"])
+CRON_FILE = f"{CONFIG_DIR}/crontab.list"
+BEAN_LOG_DIR = f"{LOG_DIR}/jd_bean_change/"
+CONFIG_SH_FILE = f"{CONFIG_DIR}/config.sh"
 
-def myids(values, test_id):
-    if "," in values:
-        ids = values.replace(" ", "").split(",")
-        ids = list(map(int, ['%s' % int(_) for _ in ids]))
-    else:
-        ids = [int(values)]
-    ids.append(int(test_id))
-    return ids
-
-
-myzdjr_chatIds = myids(diybotset['myzdjr_chatId'], my_chat_id)
-
-listenerIds = myids(diybotset['listenerId'], my_chat_id)
-
-QL8, QL2 = False, False
-if os.path.exists('/ql/config/env.sh'):
-    QL8 = True
+V4, QL, QL2, QL8, QL11 = False, False, False, False, False
+if os.environ.get("JD_DIR"):
+    V4 = True
+    AUTH_FILE = None
+    TASK_CMD = "jtask"
+    CONFIG_SH_FILE = f"{CONFIG_DIR}/cookie.sh" if os.path.exists(f"{CONFIG_DIR}/cookie.sh") else None
+elif os.environ.get("QL_DIR"):
+    QL = True
+    AUTH_FILE = f"{CONFIG_DIR}/auth.json"
+    TASK_CMD = "task"
+    dirs = os.listdir(LOG_DIR)
+    for mydir in dirs:
+        if "jd_bean_change" in mydir:
+            BEAN_LOG_DIR = f"{LOG_DIR}/{mydir}"
+            break
+    if os.path.exists(f"{DB_DIR}/database.sqlite"):
+        QL11 = True
+    elif os.path.exists(f"{DB_DIR}/env.db"):
+        QL8 = True
+    elif os.path.exists(f"{DB_DIR}/cookie.db"):
+        QL2 = True
 else:
-    QL2 = True
+    TASK_CMD = "node"
 
 
-def ql_token(file):
-    with open(file, 'r', encoding='utf-8') as f:
+def Ver_Main(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        res = func(*args, **kwargs)
+        if str(res).find("valid sign") > -1:
+            msg = ql_login()
+            return {"code": 400, "data": msg}
+        return res
+    return wrapper
+
+
+def ql_login():
+    url = "http://127.0.0.1:5600/api/login"
+    with open(AUTH_FILE, "r", encoding="utf-8") as f:
         auth = json.load(f)
-    return auth['token']
-
-
-def checkCookie1():
-    expired = []
-    cookies = get_cks(CONFIG_SH_FILE)
-    for cookie in cookies:
-        cknum = cookies.index(cookie) + 1
-        if checkCookie2(cookie):
-            expired.append(cknum)
-    return expired, cookies
-
-
-def checkCookie2(cookie):
-    url = "https://me-api.jd.com/user_new/info/GetJDUserInfoUnion"
-    headers = {
-        "Host": "me-api.jd.com",
-        "Accept": "*/*",
-        "Connection": "keep-alive",
-        "Cookie": cookie,
-        "User-Agent": "jdapp;iPhone;9.4.4;14.3;network/4g;Mozilla/5.0 (iPhone; CPU iPhone OS 14_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148;supportJDSHWK/1",
-        "Accept-Language": "zh-cn",
-        "Referer": "https://home.m.jd.com/myJd/newhome.action?sceneval=2&ufc=&",
-        "Accept-Encoding": "gzip, deflate, br"
-    }
+    data = {"username": auth["username"], "password": auth["password"]}
     try:
-        r = requests.get(url, headers=headers).json()
-        if r['retcode'] == '1001':
-            return True
-        else:
-            return False
-    except:
-        return False
-
-
-# 读取config.sh
-def read(arg):
-    if arg == "str":
-        with open(f"{CONFIG_DIR}/config.sh", 'r', encoding='utf-8') as f1:
-            configs = f1.read()
-        return configs
-    elif arg == "list":
-        with open(f"{CONFIG_DIR}/config.sh", 'r', encoding='utf-8') as f1:
-            configs = f1.readlines()
-        return configs
-
-
-# 写入config.sh
-def write(configs):
-    if isinstance(configs, str):
-        with open(f"{CONFIG_DIR}/config.sh", 'w', encoding='utf-8') as f1:
-            f1.write(configs)
-    elif isinstance(configs, list):
-        with open(f"{CONFIG_DIR}/config.sh", 'w', encoding='utf-8') as f1:
-            f1.write("".join(configs))
-
-
-# 读写config.sh
-def rwcon(arg):
-    if arg == "str":
-        with open(f"{CONFIG_DIR}/config.sh", 'r', encoding='utf-8') as f1:
-            configs = f1.read()
-        return configs
-    elif arg == "list":
-        with open(f"{CONFIG_DIR}/config.sh", 'r', encoding='utf-8') as f1:
-            configs = f1.readlines()
-        return configs
-    elif isinstance(arg, str):
-        with open(f"{CONFIG_DIR}/config.sh", 'w', encoding='utf-8') as f1:
-            f1.write(arg)
-    elif isinstance(arg, list):
-        with open(f"{CONFIG_DIR}/config.sh", 'w', encoding='utf-8') as f1:
-            f1.write("".join(arg))
-
-
-# 读写wskey.list
-def wskey(arg):
-    if V4:
-        file = f"{CONFIG_DIR}/wskey.list"
-    else:
-        file = "/ql/db/wskey.list"
-    if arg == "str":
-        with open(file, 'r', encoding='utf-8') as f1:
-            wskey = f1.read()
-        return wskey
-    elif arg == "list":
-        with open(file, 'r', encoding='utf-8') as f1:
-            wskey = f1.readlines()
-        return wskey
-    elif "wskey" in arg and "pin" in arg:
-        with open(file, 'w', encoding='utf-8') as f1:
-            f1.write(arg)
-
-
-# # 写入wskey.list
-# def write_wskey(wskey):
-#     file = f"{CONFIG_DIR}/wskey.list"
-#     if not os.path.exists(file):
-#         os.system(f"touch {file}")
-#     pin = wskey.split(";")[0].split("=")[1]
-#     with open(file, 'r', encoding='utf-8') as f1:
-#         wskeys = f1.read()
-#     if pin in wskeys:
-#         wskeys = re.sub(f"pin={pin};wskey=.*;", wskey, wskeys)
-#         with open(file, 'w', encoding='utf-8') as f2:
-#             f2.write(wskeys)
-#     else:
-#         with open(file, 'a', encoding='utf-8') as f2:
-#             f2.write(wskey + "\n")
-
-
-# user.py调用
-def getbean(i, cookie, url):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.104 Safari/537.36",
-        "Accept-Encoding": "gzip,compress,br,deflate",
-        "Cookie": cookie,
-    }
-    result, o = '', '-->'
-    try:
-        res = requests.get(url=url, headers=headers).json()
-        if res['code'] == '0':
-            followDesc = res['result']['followDesc']
-            if followDesc.find('成功') != -1:
-                try:
-                    for n in range(len(res['result']['alreadyReceivedGifts'])):
-                        redWord = res['result']['alreadyReceivedGifts'][n]['redWord']
-                        rearWord = res['result']['alreadyReceivedGifts'][n]['rearWord']
-                        result += f"{o}获得{redWord}{rearWord}"
-                except:
-                    giftsToast = res['result']['giftsToast'].split(' \n ')[1]
-                    result = f"{o}{giftsToast}"
-            elif followDesc.find('已经') != -1:
-                result = f"{o}{followDesc}"
-        else:
-            result = f"{o}Cookie 可能已经过期"
+        res = requests.post(url, json=data).json()
+        if res["code"] == 200:
+            return "自动登录成功，请重新执行命令"
+        elif res["message"].find("两步验证") > -1:
+            return " 当前登录已过期，且已开启两步登录验证，请使用命令/auth 六位验证码完成登录"
     except Exception as e:
-        if str(e).find('(char 0)') != -1:
-            result = f"{o}无法解析数据包"
-        else:
-            result = f"{o}访问发生错误：{e}"
-    return f"\n账号{str(i).zfill(2)}{result}"
+        return "自动登录出错：" + str(e)
 
 
-# user.py shoptoken() 调用
-async def checkShopToken(tokens, msg):
-    # 传入的tokens元素格式 [(1,AAA), (2, BBB)]
-    shop = ""
-    charts = []
-    for token in tokens:
-        url = f"https://api.m.jd.com/api?appid=interCenter_shopSign&t={int(time.time() * 1000)}&loginType=2&functionId=interact_center_shopSign_getActivityInfo&body={{%22token%22:%22{token[1]}%22,%22venderId%22:%22%22}}"
-        headers = {
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br",
-            "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-            "referer": "https://h5.m.jd.com/",
-            "User-Agent": "Mozilla/5.0 (Linux; U; Android 10; zh-cn; MI 8 Build/QKQ1.190828.002) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/79.0.3945.147 Mobile Safari/537.36 XiaoMi/MiuiBrowser/13.5.40"
-        }
-        r = requests.post(url, headers=headers).json()
-        if r['code'] == 402:
-            shop += f"店铺{token[0]}已过期\n"
-            msg = await jdbot.edit_message(msg, shop)
-            charts.append(f'export MyShopToken{token[0]}="{token[1]}"')
-            await asyncio.sleep(0.5)
-        else:
-            cookies = get_cks(CONFIG_SH_FILE)
-            for cookie in cookies:
-                venderId = getvenderId(token)
-                activityId, endday, actinfo = getActivityInfo(token, venderId)
-                dayinfo, day = getsignday(token, venderId, activityId, cookie)
-                if int(day) >= int(endday):
-                    shop += f"店铺{token[0]}签到已完成\n"
-                    msg = await jdbot.edit_message(msg, shop)
-                    charts.append(f'export MyShopToken{token[0]}="{token[1]}"')
-                await asyncio.sleep(0.5)
-        # charts 元素格式 ['export MyShopToken1="AAA"', 'export MyShopToken3="CCC"']
-    return charts
+def get_cks(ckfile):
+    ck_reg = re.compile(r"pt_key=\S*?;.*?pt_pin=\S*?;")
+    cookie_file = r"/ql/db/cookie.db"
+    if QL and not os.path.exists(cookie_file):
+        with open(ckfile, "r", encoding="utf-8") as f:
+            auth = json.load(f)
+        lines = str(env_manage_QL("search", "JD_COOKIE", auth["token"]))
+    elif QL:
+        with open(f"{CONFIG_DIR}/cookie.sh", "r", encoding="utf-8") as f:
+            lines = f.read()
+    else:
+        with open(ckfile, "r", encoding="utf-8") as f:
+            lines = f.read()
+    cookies = ck_reg.findall(lines)
+    for ck in cookies:
+        if ck == "pt_key=xxxxxxxxxx;pt_pin=xxxx;":
+            cookies.remove(ck)
+            break
+    return cookies
 
 
-def deltoken(charts):
-    """
-    删除过期店铺
-    """
-    configs = read("list")
-    for chart in charts:
-        configs.remove(chart)
-    write(configs)
-    tokens = re.findall(r'export MyShopToken\d+="(.*)"', read("str"))
-    i = 0
-    configs = read("list")
-    for config in configs:
-        if tokens[i] in config:
-            line = configs.index(config)
-            configs[line] = f'export MyShopToken{i + 1}="{tokens[i]}"'
-            i += 1
-            if i >= len(tokens):
-                break
-    write(configs)
+def split_list(datas, n, row: bool = True):
+    """一维列表转二维列表，根据N不同，生成不同级别的列表"""
+    length = len(datas)
+    size = length / n + 1 if length % n else length / n
+    _datas = []
+    if not row:
+        size, n = n, size
+    for i in range(int(size)):
+        start = int(i * n)
+        end = int((i + 1) * n)
+        _datas.append(datas[start:end])
+    return _datas
 
 
-def getvenderId(token):
-    """
-    获取店铺ID
-    """
-    url = f"https://api.m.jd.com/api?appid=interCenter_shopSign&t={int(time.time() * 1000)}&loginType=2&functionId=interact_center_shopSign_getActivityInfo&body={{%22token%22:%22{token}%22,%22venderId%22:%22%22}}"
-    headers = {
-        "accept": "*/*",
-        "accept-encoding": "gzip, deflate, br",
-        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "referer": "https://h5.m.jd.com/",
-        "User-Agent": "Mozilla/5.0 (Linux; U; Android 10; zh-cn; MI 8 Build/QKQ1.190828.002) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/79.0.3945.147 Mobile Safari/537.36 XiaoMi/MiuiBrowser/13.5.40"
-    }
-    res = requests.post(url, headers=headers).json()
-    venderId = res['data']['venderId']
-    return venderId
+def backup_file(file):
+    """如果文件存在，则备份，并更新"""
+    if os.path.exists(file):
+        try:
+            os.rename(file, f"{file}.bak")
+        except WindowsError:
+            os.remove(f"{file}.bak")
+            os.rename(file, f"{file}.bak")
 
 
-def getvenderName(venderId):
-    """
-    获取店铺名称
-    """
-    url = f"https://wq.jd.com/mshop/QueryShopMemberInfoJson?venderId={venderId}"
-    headers = {
-        "accept": "*/*",
-        "accept-encoding": "gzip, deflate, br",
-        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "User-Agent": "Mozilla/5.0 (Linux; U; Android 10; zh-cn; MI 8 Build/QKQ1.190828.002) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/79.0.3945.147 Mobile Safari/537.36 XiaoMi/MiuiBrowser/13.5.40"
-    }
-    res = requests.post(url, headers=headers).json()
-    shopName = res['shopName']
-    nameinfo = f'\n【店铺】{shopName}\n'
-    return shopName, nameinfo
+def press_event(user_id):
+    return events.CallbackQuery(func=lambda e: e.sender_id == user_id)
 
 
-def getActivityInfo(token, venderId):
-    """
-    获取店铺活动信息
-    """
-    JD_API_HOST = 'https://api.m.jd.com/api?appid=interCenter_shopSign'
-    url = f"{JD_API_HOST}&t={int(time.time() * 1000)}&loginType=2&functionId=interact_center_shopSign_getActivityInfo&body={{%22token%22:%22{token}%22,%22venderId%22:{venderId}}}"
-    headers = {
-        "accept": "accept",
-        "accept-encoding": "gzip, deflate",
-        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "referer": f"https://h5.m.jd.com/babelDiy/Zeus/2PAAf74aG3D61qvfKUM5dxUssJQ9/index.html?token={token}&sceneval=2&jxsid=16178634353215523301&cu=true&utm_source=kong&utm_medium=jingfen&utm_campaign=t_2009753434_&utm_term=fa3f8f38c56f44e2b4bfc2f37bce9713",
-        "User-Agent": "Mozilla/5.0 (Linux; U; Android 10; zh-cn; MI 8 Build/QKQ1.190828.002) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/79.0.3945.147 Mobile Safari/537.36 XiaoMi/MiuiBrowser/13.5.40"
-    }
-    res = requests.post(url, headers=headers).json()
-    num = len(res['data']['continuePrizeRuleList'])
-    info = ''
-    for i in range(num):
-        day = res['data']['continuePrizeRuleList'][i]['level']
-        discount = res['data']['continuePrizeRuleList'][i]['prizeList'][0]['discount']
-        info += f'  └签到{day}天，获得{int(discount)}豆；\n'
-    actinfo = f'{info}'
-    activityId = res['data']['id']
-    endday = res['data']['continuePrizeRuleList'][-1]['level']
-    return activityId, endday, actinfo
-
-
-def getsignday(token, venderId, activityId, cookie):
-    """
-    获取店铺签到信息
-    """
-    JD_API_HOST = 'https://api.m.jd.com/api?appid=interCenter_shopSign'
-    url = f"{JD_API_HOST}&t={int(time.time() * 1000)}&loginType=2&functionId=interact_center_shopSign_getSignRecord&body={{%22token%22:%22{token}%22,%22venderId%22:{venderId},%22activityId%22:{activityId},%22type%22:56}}"
-    headers = {
-        "accept": "application/json",
-        "accept-encoding": "gzip, deflate, br",
-        "accept-language": "zh-CN,zh;q=0.9",
-        "cookie": cookie,
-        "referer": f"https://h5.m.jd.com",
-        "User-Agent": "Mozilla/5.0 (Linux; U; Android 10; zh-cn; MI 8 Build/QKQ1.190828.002) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/79.0.3945.147 Mobile Safari/537.36 XiaoMi/MiuiBrowser/13.5.40"
-    }
-    res = requests.post(url, headers=headers).json()
-    day = res['data']['days']
-    dayinfo = f'  └已签到：{day}天。\n'
-    return dayinfo, day
-
-
-def signCollectGift(token, activityId, cookie):
-    """
-    开始店铺签到
-    """
-    JD_API_HOST = 'https://api.m.jd.com/api?appid=interCenter_shopSign'
-    url = f"{JD_API_HOST}&t={int(time.time() * 1000)}&loginType=2&functionId=interact_center_shopSign_signCollectGift&body={{%22token%22:%22{token}%22,%22venderId%22:688200,%22activityId%22:{activityId},%22type%22:56,%22actionType%22:7}}"
-    headers = {
-        "accept": "accept",
-        "accept-encoding": "gzip, deflate",
-        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "cookie": cookie,
-        "referer": f"https://h5.m.jd.com/babelDiy/Zeus/2PAAf74aG3D61qvfKUM5dxUssJQ9/index.html?token={token}&sceneval=2&jxsid=16178634353215523301&cu=true&utm_source=kong&utm_medium=jingfen&utm_campaign=t_2009753434_&utm_term=fa3f8f38c56f44e2b4bfc2f37bce9713",
-        "User-Agent": "Mozilla/5.0 (Linux; U; Android 10; zh-cn; MI 8 Build/QKQ1.190828.002) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/79.0.3945.147 Mobile Safari/537.36 XiaoMi/MiuiBrowser/13.5.40"
-    }
-    res = requests.post(url, headers=headers).json()
-    info = res['msg']
-    signinfo = f'  └{info}\n'
-    return signinfo
-
-
-# 修改原作者的 cronup() 函数便于我继续进行此功能的编写
-async def mycronup(jdbot, conv, resp, filename, msg, SENDER, markup, path):
+async def cmd(cmdtext):
+    """定义执行cmd命令"""
     try:
-        cron = mycron(resp)
-        msg = await jdbot.edit_message(msg, f"这是我识别的定时\n```{cron}```\n请问是否需要修改？", buttons=markup)
+        msg = await jdbot.send_message(chat_id, "开始执行命令")
+        p = await asyncio.create_subprocess_shell(
+            cmdtext, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        res_bytes, res_err = await p.communicate()
+        res = res_bytes.decode("utf-8")
+        if res.find("先登录") > -1:
+            await jdbot.delete_messages(chat_id, msg)
+            res, msg = ql_login()
+            await jdbot.send_message(chat_id, msg)
+            return
+        if len(res) == 0:
+            await jdbot.edit_message(msg, "已执行，但返回值为空")
+        elif len(res) <= 4000:
+            await jdbot.delete_messages(chat_id, msg)
+            await jdbot.send_message(chat_id, res)
+        elif len(res) > 4000:
+            tmp_log = f'{LOG_DIR}/bot/{cmdtext.split("/")[-1].split(".js")[0]}-{datetime.datetime.now().strftime("%H-%M-%S")}.log'
+            with open(tmp_log, "w+", encoding="utf-8") as f:
+                f.write(res)
+            await jdbot.delete_messages(chat_id, msg)
+            await jdbot.send_message(chat_id, "执行结果较长，请查看日志", file=tmp_log)
+            os.remove(tmp_log)
+    except Exception as e:
+        await jdbot.send_message(chat_id, f"something wrong,I\"m sorry\n{str(e)}")
+        logger.error(f"something wrong,I\"m sorry\n{str(e)}")
+
+
+def get_ch_names(path, dir):
+    """获取文件中文名称，如无则返回文件名"""
+    file_ch_names = []
+    reg = r"new Env\(\"[\S]+?\"\)"
+    ch_name = False
+    for file in dir:
+        try:
+            if os.path.isdir(f"{path}/{file}"):
+                file_ch_names.append(file)
+            elif file.endswith(".js") \
+                    and file != "jdCookie.js" \
+                    and file != "getJDCookie.js" \
+                    and file != "JD_extra_cookie.js" \
+                    and "ShareCode" not in file:
+                with open(f"{path}/{file}", "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                for line in lines:
+                    if "new Env" in line:
+                        line = line.replace('"', "'")
+                        res = re.findall(reg, line)
+                        if len(res) != 0:
+                            res = res[0].split("'")[-2]
+                            file_ch_names.append(f"{res}--->{file}")
+                            ch_name = True
+                        break
+                if not ch_name:
+                    file_ch_names.append(f"{file}--->{file}")
+                    ch_name = False
+            else:
+                continue
+        except:
+            continue
+    return file_ch_names
+
+
+async def log_btn(conv, sender, path, msg, page, files_list):
+    """定义log日志按钮"""
+    buttons = [
+        Button.inline("上一页", data="up"), 
+        Button.inline("下一页", data="next"), 
+        Button.inline("上级", data="updir"), 
+        Button.inline("取消", data="cancel")
+    ]
+    try:
+        if files_list:
+            markup = files_list
+            new_markup = markup[page]
+            if buttons not in new_markup:
+                new_markup.append(buttons)
+        else:
+            dir = os.listdir(path)
+            dir.sort()
+            if path == LOG_DIR:
+                markup = [
+                    Button.inline("_".join(file.split("_")[-2:]), data=str(file))
+                    for file in dir
+                ]
+            elif os.path.dirname(os.path.realpath(path)) == LOG_DIR:
+                markup = [
+                    Button.inline("-".join(file.split("-")[-5:]), data=str(file))
+                    for file in dir
+                ]
+            else:
+                markup = [
+                    Button.inline(file, data=str(file))
+                    for file in dir
+                ]
+            markup = split_list(markup, row)
+            if len(markup) > 30:
+                markup = split_list(markup, 30)
+                new_markup = markup[page]
+                new_markup.append(buttons)
+            else:
+                new_markup = markup
+                if path == JD_DIR:
+                    new_markup.append([Button.inline("取消", data="cancel")])
+                else:
+                    new_markup.append(
+                        [Button.inline("上级", data="updir"), Button.inline("取消", data="cancel")])
+        msg = await jdbot.edit_message(msg, "请做出您的选择：", buttons=new_markup)
+        convdata = await conv.wait_event(press_event(sender))
+        res = bytes.decode(convdata.data)
+        if res == "cancel":
+            msg = await jdbot.edit_message(msg, "对话已取消")
+            conv.cancel()
+            return None, None, None, None
+        elif res == "next":
+            page = page + 1
+            if page > len(markup) - 1:
+                page = 0
+            return path, msg, page, markup
+        elif res == "up":
+            page = page - 1
+            if page < 0:
+                page = len(markup) - 1
+            return path, msg, page, markup
+        elif res == "updir":
+            path = "/".join(path.split("/")[:-1])
+            if path == '':
+                path = JD_DIR
+            return path, msg, page, None
+        elif os.path.isfile(f"{path}/{res}"):
+            msg = await jdbot.edit_message(msg, "文件发送中，请注意查收")
+            await conv.send_file(f"{path}/{res}")
+            msg = await jdbot.edit_message(msg, f"{res}发送成功，请查收")
+            conv.cancel()
+            return None, None, None, None
+        else:
+            return f"{path}/{res}", msg, page, None
+    except asyncio.exceptions.TimeoutError:
+        await jdbot.edit_message(msg, "选择已超时，本次对话已停止")
+        return None, None, None, None
+    except Exception as e:
+        await jdbot.edit_message(msg, f"something wrong,I\"m sorry\n{str(e)}")
+        logger.error(f"something wrong,I\"m sorry\n{str(e)}")
+        return None, None, None, None
+
+
+async def snode_btn(conv, sender, path, msg, page, files_list):
+    """定义scripts脚本按钮"""
+    buttons = [
+        Button.inline("上一页", data="up"), 
+        Button.inline("下一页", data="next"), 
+        Button.inline("上级", data="updir"), 
+        Button.inline("取消", data="cancel")
+    ]
+    try:
+        if files_list:
+            markup = files_list
+            new_markup = markup[page]
+            if buttons not in new_markup:
+                new_markup.append(buttons)
+        else:
+            if path == JD_DIR and V4:
+                dir = ["scripts", OWN_DIR.split("/")[-1]]
+            elif path == JD_DIR and QL:
+                dir = ["scripts"]
+            else:
+                dir = os.listdir(path)
+                if BOT_SET["中文"].lower() == "true":
+                    dir = get_ch_names(path, dir)
+            dir.sort()
+            markup = [Button.inline(file.split("--->")[0], data=str(file.split("--->")[-1]))
+                      for file in dir if os.path.isdir(f"{path}/{file}") or file.endswith(".js")]
+            markup = split_list(markup, row)
+            if len(markup) > 30:
+                markup = split_list(markup, 30)
+                new_markup = markup[page]
+                new_markup.append(buttons)
+            else:
+                new_markup = markup
+                if path == JD_DIR:
+                    new_markup.append([Button.inline("取消", data="cancel")])
+                else:
+                    new_markup.append(
+                        [Button.inline("上级", data="updir"), Button.inline("取消", data="cancel")])
+        msg = await jdbot.edit_message(msg, "请做出您的选择：", buttons=new_markup)
+        convdata = await conv.wait_event(press_event(sender))
+        res = bytes.decode(convdata.data)
+        if res == "cancel":
+            msg = await jdbot.edit_message(msg, "对话已取消")
+            conv.cancel()
+            return None, None, None, None
+        elif res == "next":
+            page = page + 1
+            if page > len(markup) - 1:
+                page = 0
+            return path, msg, page, markup
+        elif res == "up":
+            page = page - 1
+            if page < 0:
+                page = len(markup) - 1
+            return path, msg, page, markup
+        elif res == "updir":
+            path = "/".join(path.split("/")[:-1])
+            if path == '':
+                path = JD_DIR
+            return path, msg, page, None
+        elif os.path.isfile(f"{path}/{res}"):
+            conv.cancel()
+            logger.info(f"{path}/{res} 脚本即将在后台运行")
+            msg = await jdbot.edit_message(msg, f"{res} 在后台运行成功")
+            cmdtext = f"{TASK_CMD} {path}/{res} now"
+            return None, None, None, f"CMD-->{cmdtext}"
+        else:
+            return f"{path}/{res}", msg, page, None
+    except asyncio.exceptions.TimeoutError:
+        msg = await jdbot.edit_message(msg, "选择已超时，对话已停止")
+        return None, None, None, None
+    except Exception as e:
+        msg = await jdbot.edit_message(msg, f"something wrong,I\"m sorry\n{str(e)}")
+        logger.error(f"something wrong,I\"m sorry\n{str(e)}")
+        return None, None, None, None
+
+
+def mycron(lines):
+    cronreg = re.compile(r"([0-9\-\*/,]{1,} ){4,5}([0-9\-\*/,]){1,}")
+    return cronreg.search(lines).group()
+
+
+def add_cron_V4(cron):
+    owninfo = "# mtask任务区域"
+    with open(CRON_FILE, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    for line in lines:
+        if owninfo in line:
+            i = lines.index(line)
+            lines.insert(i + 1, cron + "\n")
+            break
+    with open(CRON_FILE, "w", encoding="utf-8") as f:
+        f.write(''.join(lines))
+
+
+async def add_cron(jdbot, conv, resp, filename, msg, sender, markup, path):
+    try:
+        if QL:
+            crondata = {
+                "name": f'{filename.split(".")[0]}',
+                "command": f"task {path}/{filename}",
+                "schedule": f"{mycron(resp)}"
+            }
+        else:
+            crondata = f"{mycron(resp)} mtask {path}/{filename}"
+        msg = await jdbot.edit_message(msg, f"已识别定时\n```{crondata}```\n是否需要修改", buttons=markup)
     except:
-        msg = await jdbot.edit_message(msg, f"我无法识别定时，将使用默认定时\n```0 0 * * *```\n请问是否需要修改？", buttons=markup)
-    convdata3 = await conv.wait_event(press_event(SENDER))
+        if QL:
+            crondata = {
+                "name": f'{filename.split(".")[0]}',
+                "command": f"task {path}/{filename}",
+                "schedule": f"0 0 * * *"
+            }
+        else:
+            crondata = f"0 0 * * * mtask {path}/{filename}"
+        msg = await jdbot.edit_message(msg, f"未识别到定时，默认定时\n```{crondata}```\n是否需要修改", buttons=markup)
+    convdata3 = await conv.wait_event(press_event(sender))
     res3 = bytes.decode(convdata3.data)
-    if res3 == 'confirm':
-        await jdbot.delete_messages(chat_id, msg)
-        msg = await conv.send_message("请回复你需要设置的 cron 表达式，例如：0 0 * * *")
-        cron = await conv.get_response()
-        cron = cron.raw_text
-        msg = await jdbot.edit_message(msg, f"好的，你将使用这个定时\n```{cron}```")
-        await asyncio.sleep(1.5)
+    if res3 == "yes":
+        convmsg = await conv.send_message(f"```{crondata}```\n请输入您要修改内容，可以直接点击上方定时进行复制修改\n如果需要取消，请输入`cancel`或`取消`")
+        crondata = await conv.get_response()
+        crondata = crondata.raw_text
+        if crondata == "cancel" or crondata == "取消":
+            conv.cancel()
+            await jdbot.send_message(chat_id, "对话已取消")
+            return
+        await jdbot.delete_messages(chat_id, convmsg)
     await jdbot.delete_messages(chat_id, msg)
     if QL:
-        crondata = {"name": f'{filename.split(".")[0]}', "command": f'task {path}/{filename}', "schedule": f'{cron}'}
-        with open(AUTH_FILE, 'r', encoding='utf-8') as f:
+        with open(AUTH_FILE, "r", encoding="utf-8") as f:
             auth = json.load(f)
-        cron_manage_QL('add', crondata, auth['token'])
+        res = cron_manage_QL("add", json.loads(
+            str(crondata).replace("'", '"')), auth["token"])
+        if res["code"] == 200:
+            await jdbot.send_message(chat_id, f"{filename}已保存到{path}，并已尝试添加定时任务")
+        else:
+            await jdbot.send_message(chat_id, f"{filename}已保存到{path},定时任务添加失败，{res['data']}")
     else:
-        add_cron_V4(f'{cron} mtask {path}/{filename}')
-    await jdbot.send_message(chat_id, '添加定时任务成功')
+        add_cron_V4(crondata)
+        await jdbot.send_message(chat_id, f"{filename}已保存到{path}，并已尝试添加定时任务")
 
-# async def upuser(fname, msg):
-#     try:
-#         furl_startswith = "https://raw.githubusercontent.com/chiupam/JD_Diy/master/jbot/"
-#         speeds = ["http://ghproxy.com/", "https://mirror.ghproxy.com/", ""]
-#         msg = await jdbot.edit_message(msg, "开始下载文件")
-#         for speed in speeds:
-#             resp = requests.get(f"{speed}{furl_startswith}{fname}").text
-#             if "#!/usr/bin/env python3" in resp:
-#                 break
-#         if resp:
-#             msg = await jdbot.edit_message(msg, f"下载{fname}成功")
-#             path = f"{_JdbotDir}/diy/user.py"
-#             backup_file(path)
-#             with open(path, 'w+', encoding='utf-8') as f:
-#                 f.write(resp)
-#         else:
-#             await jdbot.edit_message(msg, f"下载{fname}失败，请自行拉取文件进/jbot/diy目录")
-#     except Exception as e:
-#         await jdbot.send_message(chat_id, 'something wrong,I\'m sorry\n' + str(e))
-#         logger.error('something wrong,I\'m sorry\n' + str(e))
+
+@Ver_Main
+def cron_manage_QL(fun, crondata, token):
+    url = "http://127.0.0.1:5600/api/crons"
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+    try:
+        if fun == "search":
+            params = {
+                "t": int(round(time.time() * 1000)),
+                "searchValue": crondata
+            }
+            res = requests.get(url, params=params, headers=headers).json()
+        elif fun == "add":
+            data = {
+                "name": crondata["name"],
+                "command": crondata["command"],
+                "schedule": crondata["schedule"]
+            }
+            res = requests.post(url, data=data, headers=headers).json()
+        elif fun == "run":
+            data = [crondata["id"]]
+            res = requests.put(f"{url}/run", json=data, headers=headers).json()
+        elif fun == "log":
+            data = crondata["id"]
+            res = requests.get(f"{url}/{data}/log", headers=headers).json()
+        elif fun == "edit":
+            data = {
+                "name": crondata["name"],
+                "command": crondata["command"],
+                "schedule": crondata["schedule"],
+                "id": crondata["id"]
+            }
+            res = requests.put(url, json=data, headers=headers).json()
+        elif fun == "disable":
+            data = [crondata["id"]]
+            res = requests.put(url + "/disable", json=data,
+                               headers=headers).json()
+        elif fun == "enable":
+            data = [crondata["id"]]
+            res = requests.put(url + "/enable", json=data,
+                               headers=headers).json()
+        elif fun == "del":
+            data = [crondata["id"]]
+            res = requests.delete(url, json=data, headers=headers).json()
+        else:
+            res = {"code": 400, "data": "未知功能"}
+    except Exception as e:
+        res = {"code": 400, "data": str(e)}
+    finally:
+        return res
+
+
+def cron_manage_V4(fun, crondata):
+    file = f"{CONFIG_DIR}/crontab.list"
+    with open(file, "r", encoding="utf-8") as f:
+        v4crons = f.readlines()
+    try:
+        if fun == "search":
+            res = {"code": 200, "data": {}}
+            for cron in v4crons:
+                if str(crondata) in cron:
+                    res["data"][cron.split(
+                        "task ")[-1].split(" ")[0].split("/")[-1].replace("\n", '')] = cron
+        elif fun == "add":
+            v4crons.append(crondata)
+            res = {"code": 200, "data": "success"}
+        elif fun == "run":
+            cmd(f'jtask {crondata.split("task")[-1]}')
+            res = {"code": 200, "data": "success"}
+        elif fun == "edit":
+            ocron, ncron = crondata.split("-->")
+            i = v4crons.index(ocron)
+            v4crons.pop(i)
+            v4crons.insert(i, ncron)
+            res = {"code": 200, "data": "success"}
+        elif fun == "disable":
+            i = v4crons.index(crondata)
+            crondatal = list(crondata)
+            crondatal.insert(0, "#")
+            ncron = ''.join(crondatal)
+            v4crons.pop(i)
+            v4crons.insert(i, ncron)
+            res = {"code": 200, "data": "success"}
+        elif fun == "enable":
+            i = v4crons.index(crondata)
+            ncron = crondata.replace("#", '')
+            v4crons.pop(i)
+            v4crons.insert(i, ncron)
+            res = {"code": 200, "data": "success"}
+        elif fun == "del":
+            i = v4crons.index(crondata)
+            v4crons.pop(i)
+            res = {"code": 200, "data": "success"}
+        else:
+            res = {"code": 400, "data": "未知功能"}
+        with open(file, "w", encoding="utf-8") as f:
+            f.write(''.join(v4crons))
+    except Exception as e:
+        res = {"code": 400, "data": str(e)}
+    finally:
+        return res
+
+
+def cron_manage(fun, crondata, token):
+    if QL:
+        res = cron_manage_QL(fun, crondata, token)
+    else:
+        res = cron_manage_V4(fun, crondata)
+    return res
+
+
+@Ver_Main
+def env_manage_QL(fun, envdata, token):
+    url = "http://127.0.0.1:5600/api/envs"
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+    try:
+        if fun == "search":
+            params = {
+                "t": int(round(time.time() * 1000)),
+                "searchValue": envdata
+            }
+            res = requests.get(url, params=params, headers=headers).json()
+        elif fun == "add":
+            data = {
+                "name": envdata["name"],
+                "value": envdata["value"],
+                "remarks": envdata["remarks"] if "remarks" in envdata.keys() else ''
+            }
+            res = requests.post(url, json=[data], headers=headers).json()
+        elif fun == "edit":
+            data = {
+                "name": envdata["name"],
+                "value": envdata["value"],
+                "id": envdata["id"],
+                "remarks": envdata["remarks"] if "remarks" in envdata.keys() else ''
+            }
+            res = requests.put(url, json=data, headers=headers).json()
+        elif fun == "disable":
+            data = [envdata["id"]]
+            res = requests.put(url + "/disable", json=data,
+                               headers=headers).json()
+        elif fun == "enable":
+            data = [envdata["id"]]
+            res = requests.put(url + "/enable", json=data,
+                               headers=headers).json()
+        elif fun == "del":
+            data = [envdata["id"]]
+            res = requests.delete(url, json=data, headers=headers).json()
+        else:
+            res = {"code": 400, "data": "未知功能"}
+    except Exception as e:
+        res = {"code": 400, "data": str(e)}
+    finally:
+        return res
