@@ -15,7 +15,7 @@ file_botset=$root/config/botset.json
 file_diybotset=$root/config/diybotset.json
 
 branch="main"
-url="https://cold-dust-a8ce.321082081.workers.dev/https://github.com/liuranya/JD_Diy.git"
+url="https://github.com/liuranya/JD_Diy.git"
 
 main() {
   echo -e "\n$1\n"
